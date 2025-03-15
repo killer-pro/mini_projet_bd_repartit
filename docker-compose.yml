@@ -1,0 +1,54 @@
+services:
+  db-dakar:
+    image: postgres:16
+    container_name: db-dakar
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ecommerce
+      POSTGRES_DB: ecommerce_dakar
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-dakar-data:/var/lib/postgresql/data
+      - ./init-scripts/dakar:/docker-entrypoint-initdb.d
+    networks:
+      - ecommerce-network
+
+  db-thies:
+    image: postgres:16
+    container_name: db-thies
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ecommerce
+      POSTGRES_DB: ecommerce_thies
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-thies-data:/var/lib/postgresql/data
+      - ./init-scripts/thies:/docker-entrypoint-initdb.d
+    networks:
+      - ecommerce-network
+
+  db-saintlouis:
+    image: postgres:16
+    container_name: db-saintlouis
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ecommerce
+      POSTGRES_DB: ecommerce_saintlouis
+    ports:
+      - "5434:5432"
+    volumes:
+      - db-saintlouis-data:/var/lib/postgresql/data
+      - ./init-scripts/saintlouis:/docker-entrypoint-initdb.d
+    networks:
+      - ecommerce-network
+
+networks:
+  ecommerce-network:
+    driver: bridge
+
+volumes:
+  db-dakar-data:
+  db-thies-data:
+  db-saintlouis-data:
