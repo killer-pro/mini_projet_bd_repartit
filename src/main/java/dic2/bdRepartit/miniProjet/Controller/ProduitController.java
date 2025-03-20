@@ -4,12 +4,9 @@ package dic2.bdRepartit.miniProjet.Controller;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import dic2.bdRepartit.miniProjet.Model.Produit;
 import dic2.bdRepartit.miniProjet.Service.ProduitService;
@@ -39,5 +36,31 @@ public class ProduitController {
     @GetMapping("/clients/{clientId}/produits-recommandes")
     public ResponseEntity<List<Produit>> getProduitsRecommandes(@PathVariable Long clientId) {
         return ResponseEntity.ok(produitService.getProduitsRecommandesForClient(clientId));
+    }
+
+    @PostMapping("/produits")
+    public ResponseEntity<Produit> createProduit(@RequestBody Produit produit) {
+        produit.setId(null);
+        Produit newProduit = produitService.createProduit(produit);
+        return new ResponseEntity<>(newProduit, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/produits/{id}/stock")
+    public ResponseEntity<Produit> updateStock(
+            @PathVariable Long id,
+            @RequestParam Integer quantity,
+            @RequestParam String ville) {
+        Produit updatedProduit = produitService.updateStock(id, quantity, ville);
+        return ResponseEntity.ok(updatedProduit);
+    }
+
+    @PostMapping("/produits/{id}/transfer")
+    public ResponseEntity<String> transferStock(
+            @PathVariable Long id,
+            @RequestParam Integer quantity,
+            @RequestParam String fromVille,
+            @RequestParam String toVille) {
+        produitService.transferStock(id, quantity, fromVille, toVille);
+        return ResponseEntity.ok("Transfert de stock effectué avec succès");
     }
 }
