@@ -19,10 +19,13 @@ les scripts de configuration de la réplication se trouvent dans le dossier init
 
 les tests unitaires se trouvent dans src/test/java/dic2/bdRepartit/miniProjet/ConcurencyTest .
 
+Pour les bases de données, j'ai utilisé Postgres version 16 sur Docker.
 
-Pour les bases de données, j'ai utilisé Docker. Vous pouvez créer les conteneurs en exécutant le script configuration_master_slave.sh (en plus de docker-compose up, d'autres commandes de configuration y sont incluses).
+Vous pouvez créer les conteneurs en exécutant le script configuration_master_slave.sh (en plus de docker-compose up, d'autres commandes de configuration y sont incluses).
 
 Pour appliquer les schémas aux différents conteneurs PostgreSQL, il suffit d'exécuter l'application Spring Boot. Le module Flyway se chargera d'insérer les schémas et de les mettre à jour s'il détecte un changement dans les fichiers de schéma.
+
+tous les services et api rest sont fonctionnels et testés.
 
 ##  Partie 1: Modélisation et Fragmentation des Données
 ### a. Fragmentation horizontale de la table Client
