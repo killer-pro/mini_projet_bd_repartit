@@ -1,3 +1,4 @@
+
 ##  Partie 1: Modélisation et Fragmentation des Données
 ### a. Fragmentation horizontale de la table Client
 Pour une fragmentation horizontale de la table Client, nous allons diviser les données selon les villes. Chaque site (Dakar, Thiès, Saint-Louis) aura sa propre table contenant les clients de sa région:
@@ -105,6 +106,122 @@ INSERT INTO Produit_Stock (ID, Stock) VALUES
 #### Cette structure permet une gestion optimisée des données client par région et sépare les informations produits selon leur nature (stable vs variable).
 
 ## Partie 2: Répartition des Données et Accès Optimisé
+### a. Stratégie de Placement des Données
+#### architecture de répartition des données:
+![img.png](img.png)
+#### Diagramme de répartition des données:
+![img_1.png](img_1.png)
+#### Fragmentation horizontale par région:
+Les clients sont stockés dans la base de données de leur ville (Dakar, Thiès, Saint-Louis), avec une contrainte CHECK pour garantir l'intégrité (exemple: CHECK (ville = 'Dakar') dans la base de Dakar).
+
+#### Fragmentation verticale des produits:
+produit_info: Contient les informations générales (id, nom, description, prix)
+produit_stock: Contient les informations spécifiques au stock local (stock, entrepôt)
+
+
+#### Tables de support pour la distribution:
+transaction_distribuee: Gère les transactions entre les différentes bases
+stock_repartition: Suivi des mouvements de stock entre les sites
+log_reservation_stock: Enregistrement des opérations de réservation de stock
+
+### b. Redirection Automatique des Requêtes
+avec la classe DataSourceRouter pour rediriger les requêtes vers la base de données appropriée en fonction de la ville:
+
+#### Cette implémentation permet:
+1. La redirection basée sur la ville du client
+2. La recherche intelligente du client dans toutes les bases
+3. Une fallback sur Dakar si la ville n'est pas trouvée
+4. La normalisation des noms de ville pour gérer les variations d'écriture
+5. La gestion des exceptions pour éviter les erreurs de connexion
+```java
+package dic2.bdRepartit.miniProjet.Service;
+
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+public class DataSourceRouter {
+
+    private final JdbcTemplate dakarJdbcTemplate;
+    private final JdbcTemplate thiesJdbcTemplate;
+    private final JdbcTemplate saintlouisJdbcTemplate;
+
+    private final Map<String, JdbcTemplate> cityDataSources = new HashMap<>();
+
+    @Autowired
+    public DataSourceRouter(
+            @Qualifier("dakarJdbcTemplate") JdbcTemplate dakarJdbcTemplate,
+            @Qualifier("thiesJdbcTemplate") JdbcTemplate thiesJdbcTemplate,
+            @Qualifier("saintlouisJdbcTemplate") JdbcTemplate saintlouisJdbcTemplate) {
+
+        this.dakarJdbcTemplate = dakarJdbcTemplate;
+        this.thiesJdbcTemplate = thiesJdbcTemplate;
+        this.saintlouisJdbcTemplate = saintlouisJdbcTemplate;
+
+        cityDataSources.put("dakar", dakarJdbcTemplate);
+        cityDataSources.put("thiès", thiesJdbcTemplate);
+        cityDataSources.put("thies", thiesJdbcTemplate);
+        cityDataSources.put("saint-louis", saintlouisJdbcTemplate);
+    }
+
+    public JdbcTemplate getDataSourceByCity(String city) {
+        String normalizedCity = city.toLowerCase();
+        return cityDataSources.getOrDefault(normalizedCity, dakarJdbcTemplate); // Dakar par défaut
+    }
+
+    public JdbcTemplate getDataSourceForClient(Long clientId) {
+        // Déterminer la ville du client à partir de son ID
+        String query = "SELECT ville FROM client WHERE id = ?";
+
+        // Essayer d'abord la base de données de Dakar
+        try {
+            String city = dakarJdbcTemplate.queryForObject(query, String.class, clientId);
+            return getDataSourceByCity(city);
+        } catch (Exception e) {
+            // Si le client n'est pas trouvé à Dakar, essayer Thiès
+            try {
+                String city = thiesJdbcTemplate.queryForObject(query, String.class, clientId);
+                return getDataSourceByCity(city);
+            } catch (Exception e2) {
+                // Si le client n'est pas trouvé à Thiès, essayer Saint-Louis
+                try {
+                    String city = saintlouisJdbcTemplate.queryForObject(query, String.class, clientId);
+                    return getDataSourceByCity(city);
+                } catch (Exception e3) {
+                    // Client non trouvé, retourner la base de données par défaut
+                    return dakarJdbcTemplate;
+                }
+            }
+        }
+    }
+}
+```
+
+### c. API REST pour les Produits
+L'API REST est implémentée à travers:
+
+#### ProduitController: Points d'entrée REST avec les endpoints:
+
+1. /api/produits: Liste tous les produits
+2. /api/produits/{id}: Récupère un produit par ID
+3. /api/produits/disponibles?ville=: Produits disponibles par ville
+4. /api/clients/{clientId}/produits-recommandes: Recommandations personnalisées
+5. Endpoints POST pour création et gestion des stocks
+
+#### ProduitService: Logique métier avec fonctionnalités clés:
+
+1. Recherche distribuée de produits à travers toutes les bases
+2. Transactions distribuées pour la mise à jour et le transfert de stock
+3. Logging des opérations avec gestion d'erreurs
+4. Récupération optimisée en fonction de la localisation
+
+
 ## Partie 3: Transactions Réparties et Gestion des Commandes
 ## Partie 4: Contrôle de Concurrence et Sérialisabilité
 ### a. Problèmes potentiels de concurrence lors de la mise à jour du stock
@@ -122,7 +239,6 @@ Le système ne vérifie pas si les données lues sont toujours valides au moment
 Le code ne gère pas explicitement les situations d'interblocage (deadlocks) potentielles lorsque plusieurs transactions attendent mutuellement des ressources.
 
 ### b. Solution proposée pour éviter les conflits
-Je propose une combinaison d'approches:
 
 ```java
 
@@ -305,4 +421,209 @@ Les données sont cohérentes après toutes les transactions
 Les transactions s'exécutent comme si elles étaient séquentielles
 Les conflits sont correctement détectés et résolus
 ## Partie 5: Tolérance aux Pannes et Réplication
+### a. Importance de la réplication des données dans un système distribué
+La réplication des données est cruciale dans un système distribué pour plusieurs raisons fondamentales :
 
+1. Haute disponibilité : Si un serveur tombe en panne, les données restent accessibles via les répliques, ce qui permet au système de continuer à fonctionner.
+2. Équilibrage de charge : La répartition des requêtes de lecture entre plusieurs répliques permet d'améliorer les performances globales du système.
+3. Localité des données : Dans un système géographiquement distribué (comme votre système e-commerce réparti entre Dakar, Thiès et Saint-Louis), la réplication permet de rapprocher les données des utilisateurs, réduisant ainsi la latence.
+4. Récupération après sinistre : Les répliques servent de sauvegarde en cas de corruption ou de perte de données sur le serveur principal.
+5. Cohérence des données : Dans votre architecture, la réplication garantit que les informations critiques (comme les produits) sont disponibles dans toutes les zones géographiques.
+
+### b. Mise en place d'un mécanisme de réplication maître-esclave entre deux serveurs MySQL
+pour configurer une réplication maître-esclave avec Postgress. Voici les étapes nécessaires :
+1. j'ajoute un Nouveau serveur réplica pour Dakar dans le docker-compose.yml
+
+```yml
+  # Nouveau serveur réplica pour Dakar
+  db-dakar-replica:
+    image: postgres:16
+    container_name: db-dakar-replica
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ecommerce
+      POSTGRES_DB: ecommerce_dakar
+    ports:
+      - "5435:5432"
+    volumes:
+      - db-dakar-replica-data:/var/lib/postgresql/data
+      - ./postgres-replica.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    depends_on:
+      - db-dakar
+    networks:
+      - ecommerce-network
+```
+2. Création du fichier de configuration postgres-master.conf (pour db-dakar):
+
+```bash
+# Paramètres de base
+listen_addresses = '*'
+port = 5432
+max_connections = 100
+
+# Paramètres WAL pour la réplication
+wal_level = replica
+max_wal_senders = 10
+wal_keep_size = 1GB
+max_replication_slots = 10
+hot_standby = on
+
+# Authentification
+password_encryption = scram-sha-256
+```
+
+3. Création du fichier de configuration postgres-replica.conf (pour db-dakar-replica):
+
+```bash
+# Paramètres de base
+listen_addresses = '*'
+port = 5432
+max_connections = 100
+
+# Paramètres pour le mode standby
+hot_standby = on
+wal_level = replica
+
+# Configuration de la réplication
+primary_conninfo = 'host=db-dakar port=5432 user=ecommerce password=password'
+```
+
+4. configuraton du maitre(db-dakar):
+
+Creation du fichier setup-master.sh à placer dans ./init-scripts/dakar/ :
+
+```bash
+#!/bin/bash
+# Créer un utilisateur de réplication
+psql -U ecommerce -d ecommerce_dakar -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replication_password';"
+
+# Modifier pg_hba.conf pour permettre la connexion du réplica
+echo "host replication replicator 0.0.0.0/0 scram-sha-256" >> /var/lib/postgresql/data/pg_hba.conf
+
+# Créer un slot de réplication
+psql -U ecommerce -d ecommerce_dakar -c "SELECT pg_create_physical_replication_slot('dakar_replica_slot');"
+
+# Redémarrer PostgreSQL pour appliquer les modifications
+pg_ctl -D /var/lib/postgresql/data restart
+```
+
+5. Configuration de l'esclave (db-dakar-replica)
+
+Création du fichier setup-replica.sh à placer dans ./init-scripts/dakar-replica/ :
+
+```bash
+#!/bin/bash
+# Arrêter le serveur PostgreSQL
+pg_ctl -D /var/lib/postgresql/data stop -m fast
+
+# Supprimer les données existantes
+rm -rf /var/lib/postgresql/data/*
+
+# Initialiser le réplica avec les données du maître
+pg_basebackup -h db-dakar -p 5432 -U replicator -D /var/lib/postgresql/data -Fp -Xs -R -P -v
+
+# Créer le fichier de signal standby
+touch /var/lib/postgresql/data/standby.signal
+
+# Ajouter la configuration de réplication
+cat > /var/lib/postgresql/data/postgresql.auto.conf << EOF
+primary_conninfo = 'host=db-dakar port=5432 user=replicator password=replication_password application_name=dakar_replica'
+primary_slot_name = 'dakar_replica_slot'
+EOF
+
+# Démarrer le serveur PostgreSQL en mode standby
+pg_ctl -D /var/lib/postgresql/data start
+```
+6. script de configuration de la réplication maître-esclave entre db-dakar et db-dakar-replica.
+
+```bash
+#!/bin/bash
+
+echo "===== Configuration de la réplication pour Dakar ====="
+
+# Démarrer les conteneurs
+docker-compose up -d db-dakar
+
+# Attendre que le maître soit prêt
+echo "Attente du démarrage du serveur maître..."
+sleep 20
+
+# Configurer le maître (créer l'utilisateur de réplication si nécessaire)
+echo "Configuration du serveur maître (db-dakar)..."
+docker exec -it db-dakar bash -c "
+# Vérifier si l'utilisateur replicator existe déjà
+psql -U ecommerce -d ecommerce_dakar -tAc \"SELECT 1 FROM pg_roles WHERE rolname='replicator'\" | grep -q 1
+if [ \$? -ne 0 ]; then
+    echo 'Création du rôle replicator...'
+    psql -U ecommerce -d ecommerce_dakar -c \"CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replication_password';\"
+else
+    echo 'Le rôle replicator existe déjà'
+fi
+
+# Vérifier si le slot de réplication existe déjà
+psql -U ecommerce -d ecommerce_dakar -tAc \"SELECT 1 FROM pg_replication_slots WHERE slot_name='dakar_replica_slot'\" | grep -q 1
+if [ \$? -ne 0 ]; then
+    echo 'Création du slot de réplication...'
+    psql -U ecommerce -d ecommerce_dakar -c \"SELECT pg_create_physical_replication_slot('dakar_replica_slot');\"
+else
+    echo 'Le slot de réplication existe déjà'
+fi
+
+# Modifier pg_hba.conf pour permettre la connexion du réplica (s'il n'est pas déjà configuré)
+if ! grep -q 'replicator' /var/lib/postgresql/data/pg_hba.conf; then
+    echo 'Ajout de la règle d\'authentification pour replicator...'
+    echo \"host replication replicator 0.0.0.0/0 md5\" >> /var/lib/postgresql/data/pg_hba.conf
+    echo \"host all replicator 0.0.0.0/0 md5\" >> /var/lib/postgresql/data/pg_hba.conf
+
+    # Redémarrer PostgreSQL pour appliquer les modifications en tant qu'utilisateur postgres
+    echo 'Redémarrage de PostgreSQL...'
+    su - postgres -c \"pg_ctl -D /var/lib/postgresql/data reload\"
+else
+    echo 'La règle d\'authentification pour replicator existe déjà'
+fi
+"
+
+# Attendre que le maître soit configuré
+echo "Attente de la configuration du maître..."
+sleep 10
+
+# Démarrer le réplica
+echo "Démarrage du serveur réplica..."
+docker-compose up -d db-dakar-replica
+
+# Attendre que le réplica soit prêt
+echo "Attente du démarrage du serveur réplica..."
+sleep 20
+
+# Initialiser la réplication
+echo "Initialisation de la réplication..."
+docker exec -it db-dakar-replica bash -c "
+# Arrêter PostgreSQL en tant qu'utilisateur postgres
+su - postgres -c \"pg_ctl -D /var/lib/postgresql/data stop -m fast\"
+
+# Supprimer les données existantes
+rm -rf /var/lib/postgresql/data/*
+
+# Initialiser le réplica avec les données du maître
+su - postgres -c \"pg_basebackup -h db-dakar -p 5432 -U replicator -W -D /var/lib/postgresql/data -Fp -Xs -P -v\"
+# Note: La commande demandera un mot de passe - entrez 'replication_password'
+
+# Créer le fichier de signal standby
+touch /var/lib/postgresql/data/standby.signal
+
+# Ajouter la configuration de réplication
+cat > /var/lib/postgresql/data/postgresql.auto.conf << EOF
+primary_conninfo = 'host=db-dakar port=5432 user=replicator password=replication_password application_name=dakar_replica'
+primary_slot_name = 'dakar_replica_slot'
+EOF
+
+# S'assurer que les fichiers appartiennent à postgres
+chown -R postgres:postgres /var/lib/postgresql/data
+
+# Démarrer PostgreSQL en tant qu'utilisateur postgres
+su - postgres -c \"pg_ctl -D /var/lib/postgresql/data start\"
+"
+
+echo "===== Configuration de la réplication terminée ====="
+```

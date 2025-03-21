@@ -11,9 +11,28 @@ services:
     volumes:
       - db-dakar-data:/var/lib/postgresql/data
       - ./init-scripts/dakar:/docker-entrypoint-initdb.d
+      - ./init-scripts/dakar/postgres-master.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     networks:
       - ecommerce-network
-
+  # Nouveau serveur réplica pour Dakar
+  db-dakar-replica:
+    image: postgres:16
+    container_name: db-dakar-replica
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ecommerce
+      POSTGRES_DB: ecommerce_dakar
+    ports:
+      - "5435:5432"
+    volumes:
+      - db-dakar-replica-data:/var/lib/postgresql/data
+      - ./init-scripts/dakar-replica/postgres-replica.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    depends_on:
+      - db-dakar
+    networks:
+      - ecommerce-network
   db-thies:
     image: postgres:16
     container_name: db-thies
@@ -52,3 +71,4 @@ volumes:
   db-dakar-data:
   db-thies-data:
   db-saintlouis-data:
+  db-dakar-replica-data:
