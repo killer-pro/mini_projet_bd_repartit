@@ -63,4 +63,5 @@ public class ProduitController {
         produitService.transferStock(id, quantity, fromVille, toVille);
         return ResponseEntity.ok("Transfert de stock effectué avec succès");
     }
+
 }
