@@ -1,5 +1,5 @@
 
-##  Partie 1: Modélisation et Fragmentation des Données
+__##  Partie 1: Modélisation et Fragmentation des Données
 ### a. Fragmentation horizontale de la table Client
 Pour une fragmentation horizontale de la table Client, nous allons diviser les données selon les villes. Chaque site (Dakar, Thiès, Saint-Louis) aura sa propre table contenant les clients de sa région:
 ```sql
@@ -223,6 +223,93 @@ L'API REST est implémentée à travers:
 
 
 ## Partie 3: Transactions Réparties et Gestion des Commandes
+ Le système permet à un client de passer une commande contenant des produits provenant de plusieurs entrepôts situés dans différentes villes (Dakar, Thiès, Saint-Louis).
+### a. Modélisez une transaction répartie lorsqu’un client passe une commande contenant des produits provenant de plusieurs entrepôts.
+#### Modèle de Données
+
+Le modèle de données est réparti sur plusieurs bases de données correspondant aux différentes villes:
+
+- **Client**: Fragmenté horizontalement (par ville)
+- **Produit**: Fragmenté verticalement (informations générales et stock par ville)
+- **Commande**: Centralisée dans la ville du client
+- **Répartition du Stock**: Trace les mouvements de stock entre villes
+
+#### Architecture de Transaction Répartie
+
+L'architecture implémente un protocole similaire à la validation en deux phases (2PC) pour garantir l'atomicité des transactions à travers les différentes bases de données.
+
+#### Diagramme de sequence de Flux de Transaction
+![img_2.png](img_2.png)
+### b. Implémentez une gestion des transactions avec le protocole de validation en deux phases (2PC).
+
+L'implémentation suit une adaptation du protocole 2PC adaptée aux contraintes du système:
+
+1. Phase de Préparation:
+
+Un UUID est généré pour identifier la transaction distribuée
+L'état initial "EN_COURS" est enregistré dans toutes les bases
+Le stock est vérifié et réservé avec des verrous (pessimiste et optimiste)
+
+
+2. Phase de Validation:
+
+Si toutes les réservations sont réussies, la commande est créée
+Les détails et la répartition de stock sont enregistrés
+Les transactions sont marquées comme "TERMINÉE"
+
+
+3. Phase d'Annulation:
+
+En cas d'erreur, les réservations sont annulées
+Les transactions sont marquées comme "ÉCHOUÉE"
+Un message d'erreur est journalisé
+
+c. Écrivez un script SQL permettant d’exécuter une commande en s’assurant
+que le stock est mis à jour sur chaque serveur concerné
+
+```sql
+-- 1. Enregistrer le début de la transaction dans toutes les bases
+INSERT INTO transaction_distribuee (id, statut, timestamp_debut, commentaire)
+VALUES (?, 'EN_COURS', CURRENT_TIMESTAMP, ?);
+
+-- 2. Vérifier et réserver le stock (avec verrouillage)
+SELECT stock, version FROM produit_stock WHERE id_produit = ? FOR UPDATE;
+UPDATE produit_stock SET stock = stock - ?, version = version + 1
+WHERE id_produit = ? AND version = ?;
+INSERT INTO log_reservation_stock (id_produit, quantite, ville, operation, timestamp)
+VALUES (?, ?, ?, 'RESERVE', CURRENT_TIMESTAMP);
+
+-- 3. Créer la commande
+INSERT INTO commande (id_client, date_commande, statut, montant_total, ville)
+VALUES (?, CURRENT_TIMESTAMP, 'Nouvelle', ?, ?);
+
+-- 4. Créer les détails
+INSERT INTO commande_detail (id_commande, id_produit, quantite, prix_unitaire, ville)
+VALUES (?, ?, ?, ?, ?);
+
+-- 5. Enregistrer la répartition
+INSERT INTO stock_repartition (id_commande, id_produit, quantite, ville_source, ville_destination)
+VALUES (?, ?, ?, ?, ?);
+
+-- 6. Mettre à jour le journal
+UPDATE transaction_distribuee
+SET commentaire = CONCAT(commentaire, E'\n', ?)
+WHERE id = ?;
+
+-- 7. Marquer la transaction comme terminée
+UPDATE transaction_distribuee
+SET statut = 'TERMINÉE', timestamp_fin = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- En cas d'échec, annuler les réservations
+UPDATE produit_stock SET stock = stock + ?, version = version + 1
+WHERE id_produit = ?;
+INSERT INTO log_reservation_stock (id_produit, quantite, ville, operation, timestamp)
+VALUES (?, ?, ?, 'ANNULATION', CURRENT_TIMESTAMP);
+UPDATE transaction_distribuee
+SET statut = 'ÉCHOUÉE', timestamp_fin = CURRENT_TIMESTAMP, commentaire = ?
+WHERE id = ?;
+```
 ## Partie 4: Contrôle de Concurrence et Sérialisabilité
 ### a. Problèmes potentiels de concurrence lors de la mise à jour du stock
 Dans le système actuel, plusieurs problèmes de concurrence peuvent survenir lors de la mise à jour du stock:
@@ -627,3 +714,5 @@ su - postgres -c \"pg_ctl -D /var/lib/postgresql/data start\"
 
 echo "===== Configuration de la réplication terminée ====="
 ```
+### resultat de la configuration maitre esclave la réplication entre db-dakar et db-dakar-replica est bien configurée.😁👌
+![img_3.png](img_3.png)
