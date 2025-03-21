@@ -742,5 +742,7 @@ su - postgres -c \"pg_ctl -D /var/lib/postgresql/data start\"
 
 echo "===== Configuration de la réplication terminée ====="
 ```
+### c. Testez la réplication en exécutant des mises à jour sur le maître et en  vérifiant leur propagation vers l’esclave.
+
 ### resultat de la configuration maitre esclave la réplication entre db-dakar et db-dakar-replica est bien configurée.😁👌
 ![img_3.png](img_3.png)
