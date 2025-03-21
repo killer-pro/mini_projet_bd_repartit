@@ -1,5 +1,30 @@
+# Mini projet Base de données Réparties
+## Par Mouhamadou Diouf Cissé
 
-__##  Partie 1: Modélisation et Fragmentation des Données
+## information sur le projet
+
+J'ai utilisé Java nottament springboot pour gérer les requetes, les configurations et les API REST. 
+
+Mon rapport final se trouve dans le fichier rapport.md.
+
+Les schémas des bases de données sont dans src/main/resources/db/migration. Vous y trouverez tous les schémas (Dakar, Thiès, Saint-Louis).
+
+la logique metier des requetes(gestion transaction, protocole de validation,...) se trouve dans le package Service.
+
+les api rest se trouvent dans le package Controller.
+
+les configurations de la base de données se trouvent dans le package Config.
+
+les scripts de configuration de la réplication se trouvent dans le dossier init-scripts.
+
+les tests unitaires se trouvent dans src/test/java/dic2/bdRepartit/miniProjet/ConcurencyTest .
+
+
+Pour les bases de données, j'ai utilisé Docker. Vous pouvez créer les conteneurs en exécutant le script configuration_master_slave.sh (en plus de docker-compose up, d'autres commandes de configuration y sont incluses).
+
+Pour appliquer les schémas aux différents conteneurs PostgreSQL, il suffit d'exécuter l'application Spring Boot. Le module Flyway se chargera d'insérer les schémas et de les mettre à jour s'il détecte un changement dans les fichiers de schéma.
+
+##  Partie 1: Modélisation et Fragmentation des Données
 ### a. Fragmentation horizontale de la table Client
 Pour une fragmentation horizontale de la table Client, nous allons diviser les données selon les villes. Chaque site (Dakar, Thiès, Saint-Louis) aura sa propre table contenant les clients de sa région:
 ```sql
